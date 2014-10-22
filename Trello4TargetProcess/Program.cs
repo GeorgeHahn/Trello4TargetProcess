@@ -12,64 +12,123 @@ namespace Trello4TargetProcess
     {
         static void Main(string[] args)
         {
-            if (args.Length <= 1)
+            System.Action showHelp = () =>
             {
                 Console.WriteLine("Must be caleed with an application key");
                 Console.WriteLine("Get yours at https://trello.com/1/appKey/generate");
                 Console.WriteLine();
                 Console.WriteLine("Usage:");
-                Console.WriteLine("\tRequest authorization:\n\t\t Trello4TargetProcess [appkey] getauth");
-                Console.WriteLine("\tAuthorize:\n\t\t Trello4TargetProcess [appkey] auth [authkey]");
-                Console.WriteLine("\tRun:\n\t\t Trello4TargetProcess [appkey] board [boardid]");
+                Console.WriteLine("\tSet appkey:\n\t\t Trello4TargetProcess api [appkey]");
+                Console.WriteLine("\tRequest authorization:\n\t\t Trello4TargetProcess getauth");
+                Console.WriteLine("\tAuthorize:\n\t\t Trello4TargetProcess auth [authkey]");
+                Console.WriteLine("\tRun:\n\t\t Trello4TargetProcess board [boardid]");
+            };
+
+            if (args.Length > 0)
+            {
+                if (args[0].Contains("help"))
+                {
+                    showHelp();
+                    return;
+                }
+
+                if (args[0] == "api")
+                {
+                    File.WriteAllText("api.cfg", args[1]);
+                    return;
+                }
+
+                if (args[0] == "board")
+                {
+                    File.WriteAllText("boardid.cfg", args[1]);
+                    return;
+                }
+
+                // Everything below requires a valid API key
+
+                if (!File.Exists("api.cfg"))
+                {
+                    Console.WriteLine("API key not set.");
+                    showHelp();
+                    return;
+                }
+                var config = new Trello(File.ReadAllText("api.cfg"));
+
+                if (args[0] == "getauth")
+                {
+                    var authurl = config.GetAuthorizationUrl("Trello4TargetProcess", Scope.ReadWrite, Expiration.Never);
+                    Console.WriteLine("Authorization URL recieved");
+                    Console.WriteLine(authurl);
+                    return;
+                }
+
+                if (args[0] == "auth")
+                {
+                    File.WriteAllText("auth.cfg", args[1]);
+                    config.Authorize(args[1]);
+                    Console.WriteLine("Successfully authorized");
+                    return;
+                }
+            }
+
+            // API key
+            if (!File.Exists("api.cfg"))
+            {
+                Console.WriteLine("API key not set.");
+                showHelp();
                 return;
             }
-
-            var trello = new Trello(args[0]);
-            string boardid;
-
-            if (args[1] == "getauth")
+            var trello = new Trello(File.ReadAllText("api.cfg"));
+            
+            // Boad id
+            if (!File.Exists("boardid.cfg"))
             {
-                var authurl = trello.GetAuthorizationUrl("Trello4TargetProcess", Scope.ReadWrite, Expiration.Never);
-                Console.WriteLine("Authorization URL recieved");
-                Console.WriteLine(authurl);
+                Console.WriteLine("Board id not set.");
+                showHelp();
                 return;
             }
+            string boardid = File.ReadAllText("boardid.cfg");
 
-            if (args[1] == "auth")
+            // Auth
+            if (!File.Exists("auth.cfg"))
             {
-                File.WriteAllText("auth.cfg", args[2]);
-                trello.Authorize(args[2]);
-                Console.WriteLine("Successfully authorized");
+                Console.WriteLine("Not authorized.");
+                showHelp();
                 return;
             }
-
-            if (args[1] == "board")
-            {
-                boardid = args[2];
-            }
-            else
-            {
-                return;
-            }
-
-            if(!File.Exists("auth.cfg"))
-                Console.WriteLine("Not authorized. Run with no arguments to see usage info.");
-
             trello.Authorize(File.ReadAllText("auth.cfg"));
 
 
-            var board = trello.Boards.WithId(boardid);
-            var lists = trello.Lists.ForBoard(board);
+            var glue = new TrelloTargetProcessGlueEngine(trello, boardid);
+            glue.Run();
+
+            Console.WriteLine("Done");
+        }
+    }
+
+    internal class TrelloTargetProcessGlueEngine
+    {
+        private ITrello _trello;
+        private readonly string _boardid;
+
+        public TrelloTargetProcessGlueEngine(Trello trello, string boardid)
+        {
+            _trello = trello;
+            _boardid = boardid;
+        }
+
+        public void Run()
+        {
+            var board = _trello.Boards.WithId(_boardid);
+            var lists = _trello.Lists.ForBoard(board);
             var list = lists.First();
 
-            foreach (var card in trello.Cards.ForList(list))
+            foreach (var card in _trello.Cards.ForList(list))
             {
                 Console.WriteLine(card.Name);
                 Console.WriteLine(card.Id);
                 Console.WriteLine();
             }
-
-            Console.ReadLine();
         }
     }
 }
