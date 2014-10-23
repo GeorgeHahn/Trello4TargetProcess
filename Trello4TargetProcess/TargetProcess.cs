@@ -8,6 +8,10 @@ using HttpUtils = ServiceStack.HttpUtils;
 
 namespace Trello4TargetProcess
 {
+    // TODOs:
+    //  Model cleanup
+    //  Rip out RestSharp, replace with ServiceStack HttpUtils
+
     public class TargetProcess
     {
         private readonly string _token;
@@ -31,22 +35,23 @@ namespace Trello4TargetProcess
                 AddUpdateUserStory(entity);
         }
 
-        public void AddUpdateTask(IEntity entity)
+        private void AddUpdateEntity(string endpoint, IEntity entity)
         {
-            var endpoint = _apiurl + "Tasks/";
+            var api = _apiurl + endpoint;
 
             var storystr = JsonConvert.SerializeObject(entity, Formatting.None, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
 
-            HttpUtils.PostStringToUrl(HttpUtils.AddQueryParam(endpoint, "token", _token), storystr, "application/json");
+            HttpUtils.PostStringToUrl(HttpUtils.AddQueryParam(api, "token", _token), storystr, "application/json");
+        }
+
+        public void AddUpdateTask(IEntity entity)
+        {
+            AddUpdateEntity("Tasks/", entity);
         }
 
         public void AddUpdateUserStory(IEntity entity)
         {
-            var endpoint = _apiurl + "UserStories/";
-
-            var storystr = JsonConvert.SerializeObject(entity, Formatting.None, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
-
-            HttpUtils.PostStringToUrl(HttpUtils.AddQueryParam(endpoint, "token", _token), storystr, "application/json");
+            AddUpdateEntity("UserStories/", entity);
         }
 
         public IEnumerable<IEntity> GetUserStories()

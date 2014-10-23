@@ -31,7 +31,7 @@ namespace Trello4TargetProcess
         public void Run()
         {
             var board = _trello.Boards.WithId(_boardid);
-            var lists = _trello.Lists.ForBoard(board);
+            var lists = _trello.Lists.ForBoard(board).ToList();
             var tpStoriesFromTrello = _tp.GetEntitiesFromTrello().ToList();
 
             SyncTrelloArchiveStateToTPEntities(tpStoriesFromTrello);
@@ -40,7 +40,7 @@ namespace Trello4TargetProcess
             UpdateWIPListOnTrelloFromInProgressTasksInTP(lists);
         }
 
-        private void UpdateWIPListOnTrelloFromInProgressTasksInTP(IEnumerable<List> lists)
+        private void UpdateWIPListOnTrelloFromInProgressTasksInTP(List<List> lists)
         {
             // Take WIP cards from TP and send them to trello
             var wip = new List<TargetProcess.IEntity>();
@@ -70,7 +70,7 @@ namespace Trello4TargetProcess
             }
         }
 
-        private void SyncNewTrelloCardsToTP(IEnumerable<TargetProcess.IEntity> tpStoriesFromTrello, Board board)
+        private void SyncNewTrelloCardsToTP(List<TargetProcess.IEntity> tpStoriesFromTrello, Board board)
         {
             // Find cards in Trello that aren't in TP
             var tpIds = tpStoriesFromTrello.Select(tpEntity => tpEntity.TrelloId).ToList();
@@ -105,7 +105,7 @@ namespace Trello4TargetProcess
             ScrubTrelloIDsFromTP(tpStoriesFromTrello, tpIds);
         }
 
-        private void ScrubTrelloIDsFromTP(IEnumerable<TargetProcess.IEntity> tpStoriesFromTrello, List<string> tpIds)
+        private void ScrubTrelloIDsFromTP(List<TargetProcess.IEntity> tpStoriesFromTrello, List<string> tpIds)
         {
             // tpIds holds IDs of cards that are in TP, but not in Trello
             // When would this happen?
@@ -119,7 +119,7 @@ namespace Trello4TargetProcess
             }
         }
 
-        private void SyncTPEntityStateToTrelloCards(IEnumerable<TargetProcess.IEntity> tpStoriesFromTrello)
+        private void SyncTPEntityStateToTrelloCards(List<TargetProcess.IEntity> tpStoriesFromTrello)
         {
             // Find cards that have been done'd in TP, archive them in Trello
             var tpDonedEntities = from x in tpStoriesFromTrello
@@ -134,7 +134,7 @@ namespace Trello4TargetProcess
             }
         }
 
-        private void SyncTrelloArchiveStateToTPEntities(IEnumerable<TargetProcess.IEntity> tpStoriesFromTrello)
+        private void SyncTrelloArchiveStateToTPEntities(List<TargetProcess.IEntity> tpStoriesFromTrello)
         {
             // Find cards that have been archived in Trello, 'Done' them in TP
             foreach (var story in tpStoriesFromTrello)
