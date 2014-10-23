@@ -177,6 +177,7 @@ namespace Trello4TargetProcess
             var board = _trello.Boards.WithId(_boardid);
             var lists = _trello.Lists.ForBoard(board);
             var list = lists.First();
+            var wiplist = lists.ElementAt(1);
             var trelloCards = _trello.Cards.ForList(list);
 
             var tpStoriesFromTrello = _tp.GetUserStoriesFromTrello();
@@ -219,7 +220,7 @@ namespace Trello4TargetProcess
             foreach (var id in trelloIds)
             {
                 var card = _trello.Cards.WithId(id);
-                var newStory = new TargetProcess.UserStory();
+                var newStory = new TargetProcess.IEntity();
                 newStory.Name = card.Name;
                 newStory.Description = card.Desc;
                 newStory.TrelloId = card.Id;
@@ -243,12 +244,11 @@ namespace Trello4TargetProcess
 
             // tpIds holds IDs of cards that are in TP, but not in Trello
             // When would this happen?
-            // Trello -> card deleted
-            // Trello -> card archived?
+            // Trello -> card deleted?
             // What do we do about it? Make a new card in trello and move from TP to Trello?
 
 
-            // Take WIP cards from TP
+            // Take WIP cards from TP and send them to trello
             var wip = new List<TargetProcess.IEntity>();
             wip.AddRange(_tp.GetUserStoriesInProgress());
             wip.AddRange(_tp.GetTasksInProgress());
@@ -257,24 +257,27 @@ namespace Trello4TargetProcess
             {
                 if (story.TrelloId == null)
                 {
-                    // TODO: Add entity to trello
-                    // TODO: Add trello ID to entity
+                    var newCard = _trello.Cards.Add(story.Name, new ListId(wiplist.Id));
+                    newCard.Desc = story.Description;
 
-                    //AddToTrello(lists.ElementAt(1), story.Name etc etc);
-
-
-                    Console.WriteLine("AddToTrello");
+                    story.TrelloId = newCard.Id;
+                    _tp.AddUpdateEntity(story);
                 }
                 else
                 {
                     // Sync doneness from Trello to TP
                     if (_trello.Cards.WithId(story.TrelloId).Closed == true)
-                        // TODO Mark story as done in TP
-                        Console.WriteLine("Has been closed in trello");
+                    {
+                        story.EntityState = new TargetProcess.EntityState();
+                        story.EntityState.Name = "Done";
+                        story.EntityState.Id = 82; // TODO: THIS IS WRONG, ID DEPENDS ON THE PROJECT
+                        _tp.AddUpdateEntity(story);
+                    }
                 }
             }
         }
     }
+
 
     public class TargetProcess
     {
@@ -291,29 +294,50 @@ namespace Trello4TargetProcess
             client.Authenticator = new TokenAuthenticator(_token);
         }
 
-        public void AddUpdateUserStory(UserStory story)
+        public void AddUpdateEntity(IEntity entity)
         {
-            var endpoint = _apiurl + "UserStories/";
+            if(entity.EntityType.Name == "Task")
+                AddUpdateTask(entity);
+            else if(entity.EntityType.Name == "UserStory")
+                AddUpdateUserStory(entity);
+        }
 
-            var storystr = JsonConvert.SerializeObject(story, Formatting.None, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
+        public void AddUpdateTask(IEntity entity)
+        {
+            //var endpoint = _apiurl + "Tasks/";
+            var endpoint = "https://georgehahn-tpondemand-com-1k2ak36j3abd.runscope.net/api/v1/Tasks/";
+
+            var storystr = JsonConvert.SerializeObject(entity, Formatting.None, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
 
             endpoint
                 .AddQueryParam("token", _token)
                 .PostStringToUrl(storystr, "application/json");
         }
 
-        public IEnumerable<UserStory> GetUserStories()
+        public void AddUpdateUserStory(IEntity entity)
+        {
+            //var endpoint = _apiurl + "UserStories/";
+            var endpoint = "https://georgehahn-tpondemand-com-1k2ak36j3abd.runscope.net/api/v1/UserStories/";
+
+            var storystr = JsonConvert.SerializeObject(entity, Formatting.None, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
+
+            endpoint
+                .AddQueryParam("token", _token)
+                .PostStringToUrl(storystr, "application/json");
+        }
+
+        public IEnumerable<IEntity> GetUserStories()
         {
             var req = new RestRequest("UserStories/");
             req.RequestFormat = DataFormat.Json;
             req.AddHeader("Accept", "application/json");
             req.AddParameter("take", "1000"); // TODO: This will break miserable when we hit an inst with over 1000 entities
             var resp = client.Execute(req);
-            var data = JsonConvert.DeserializeObject<UserStoryResponse>(resp.Content);
+            var data = JsonConvert.DeserializeObject<EntityResponse>(resp.Content);
             return data.Items;
         }
 
-        public IEnumerable<UserStory> GetUserStoriesInProgress()
+        public IEnumerable<IEntity> GetUserStoriesInProgress()
         {
             var req = new RestRequest("UserStories/");
             req.RequestFormat = DataFormat.Json;
@@ -323,11 +347,11 @@ namespace Trello4TargetProcess
             req.AddParameter("where", "EntityState.Name eq 'In Progress'");
 
             var resp = client.Execute(req);
-            var data = JsonConvert.DeserializeObject<UserStoryResponse>(resp.Content);
+            var data = JsonConvert.DeserializeObject<EntityResponse>(resp.Content);
             return data.Items;
         }
 
-        public IEnumerable<Task> GetTasksInProgress()
+        public IEnumerable<IEntity> GetTasksInProgress()
         {
             var req = new RestRequest("Tasks/");
             req.RequestFormat = DataFormat.Json;
@@ -337,11 +361,11 @@ namespace Trello4TargetProcess
             req.AddParameter("where", "EntityState.Name eq 'In Progress'");
 
             var resp = client.Execute(req);
-            var data = JsonConvert.DeserializeObject<TaskResponse>(resp.Content);
+            var data = JsonConvert.DeserializeObject<EntityResponse>(resp.Content);
             return data.Items;
         }
 
-        public IEnumerable<UserStory> GetUserStoriesFromTrello()
+        public IEnumerable<IEntity> GetUserStoriesFromTrello()
         {
             var req = new RestRequest("UserStories/");
             req.RequestFormat = DataFormat.Json;
@@ -352,7 +376,7 @@ namespace Trello4TargetProcess
             req.AddParameter("where", "CustomFields.TrelloId is not null");
 
             var resp = client.Execute(req);
-            var data = JsonConvert.DeserializeObject<UserStoryResponse>(resp.Content);
+            var data = JsonConvert.DeserializeObject<EntityResponse>(resp.Content);
             return data.Items;
         }
 
@@ -372,19 +396,13 @@ namespace Trello4TargetProcess
             }
         }
 
-        public class UserStoryResponse
+        public class EntityResponse
         {
             public string Next;
-            public List<UserStory> Items;
+            public List<IEntity> Items;
         }
 
-        public class TaskResponse
-        {
-            public string Next;
-            public List<Task> Items;
-        }
-
-        public abstract class IEntity
+        public class IEntity
         {
             public int? Id { get; set; }
             public string Name { get; set; }
@@ -406,38 +424,32 @@ namespace Trello4TargetProcess
                     if(CustomFields == null)
                         CustomFields = new List<CustomField>();
 
-                    if (this.TrelloId == null)
+                    var fields = CustomFields.Where(f => f.Name == "TrelloId");
+                    var field = fields.FirstOrDefault();
+
+                    // Already exists
+                    if (field != null)
                     {
-                        var field = new CustomField
+                        field.Type = "Text";
+                        field.Value = value;
+                        return;
+                    }
+
+                    // Didn't exist
+                    var newField = new CustomField
                         {
                             Name = "TrelloId",
                             Type = "Text",
                             Value = value
                         };
-                        CustomFields.Add(field);
-                    }
-                    else
-                    {
-                        var fields = CustomFields.Where(f => f.Name == "TrelloId");
-                        var field = fields.FirstOrDefault();
-                        if (field != null)
-                            field.Name = value;
-                    }
+                    CustomFields.Add(newField);
                 }
             }
 
             public EntityState EntityState;
             public List<CustomField> CustomFields;
-        }
-
-        public class UserStory : IEntity
-        {
             public EntityType EntityType { get; set; }
             public Project Project { get; set; }
-        }
-
-        public class Task : IEntity
-        {
         }
 
         public class CustomField
@@ -451,9 +463,9 @@ namespace Trello4TargetProcess
         {
             public Int32 Id;
             public string Name;
-            public bool IsInitial;
-            public bool IsFinal;
-            public double NumericPriority;
+            public bool? IsInitial;
+            public bool? IsFinal;
+            public double? NumericPriority;
         }
 
         public class Owner
