@@ -11,6 +11,9 @@ using TrelloNet;
 using System.Xml.Serialization;
 using Newtonsoft.Json;
 using RestSharp.Deserializers;
+using ServiceStack;
+using Formatting = Newtonsoft.Json.Formatting;
+using IRestClient = RestSharp.IRestClient;
 
 namespace Trello4TargetProcess
 {
@@ -35,13 +38,14 @@ namespace Trello4TargetProcess
             if (args.Length > 0)
             {
                 var param = args[0];
-                var val = args[1];
 
-                if (param.Contains("help"))
+                if (param.Contains("help") || args.Length == 1)
                 {
                     showHelp();
                     return;
                 }
+
+                var val = args[1];
 
                 switch (param)
                 {
@@ -187,7 +191,7 @@ namespace Trello4TargetProcess
 
             // Find cards that have been done'd in TP, archive them in Trello
             var tpDonedEntities = from x in tpStoriesFromTrello
-                           where x.entitystate.Name == "Done"
+                           where x.EntityState.Name == "Done"
                            select x;
 
             foreach (var userStorey in tpDonedEntities)
@@ -197,27 +201,44 @@ namespace Trello4TargetProcess
                     card.Closed = true;
             }
 
-
             // Find cards in Trello that aren't in TP, add them
-
             var tpIds = tpStoriesFromTrello.Select(tpEntity => tpEntity.TrelloId).ToList();
-            var trelIds = _trello.Cards.ForList(list).Select(card => card.Id).ToList();
+            var trelloIds = _trello.Cards.ForList(list).Select(card => card.Id).ToList();
 
             for (int i = 0; i < tpIds.Count; i++)
             {
-                if (trelIds.Contains(tpIds[i]))
+                if (trelloIds.Contains(tpIds[i]))
                 {
-                    trelIds.Remove(tpIds[i]);
+                    trelloIds.Remove(tpIds[i]);
                     tpIds.Remove(tpIds[i]);
                     i--;
                 }
             }
 
-            // trelIds holds IDs of cards that are in Trello, but not in TP
-            foreach (var id in trelIds)
+            // IDs of cards that are in Trello, but not in TP
+            foreach (var id in trelloIds)
             {
                 var card = _trello.Cards.WithId(id);
-                //_tp.AddNewUserStory(card.Name, etc etc);
+                var newStory = new TargetProcess.UserStory();
+                newStory.Name = card.Name;
+                newStory.Description = card.Desc;
+                newStory.TrelloId = card.Id;
+
+                string bl = "";
+                foreach (var va in card.Labels)
+                {
+                    bl = va.Name + ",";
+                }
+
+                newStory.Id = null; // Force new card (vs update or error)
+                newStory.Tags = bl;
+                newStory.Project = new TargetProcess.Project()
+                {
+                    Id = 167,
+                    Name = "Misc"
+                };
+
+                _tp.AddUpdateUserStory(newStory);
             }
 
             // tpIds holds IDs of cards that are in TP, but not in Trello
@@ -228,19 +249,27 @@ namespace Trello4TargetProcess
 
 
             // Take WIP cards from TP
-            var wip = _tp.GetUserStoriesInProgress();
+            var wip = new List<TargetProcess.IEntity>();
+            wip.AddRange(_tp.GetUserStoriesInProgress());
+            wip.AddRange(_tp.GetTasksInProgress());
+
             foreach (var story in wip)
             {
                 if (story.TrelloId == null)
                 {
+                    // TODO: Add entity to trello
+                    // TODO: Add trello ID to entity
+
                     //AddToTrello(lists.ElementAt(1), story.Name etc etc);
+
+
                     Console.WriteLine("AddToTrello");
                 }
                 else
                 {
                     // Sync doneness from Trello to TP
                     if (_trello.Cards.WithId(story.TrelloId).Closed == true)
-                        //Mark entity's doneness
+                        // TODO Mark story as done in TP
                         Console.WriteLine("Has been closed in trello");
                 }
             }
@@ -251,14 +280,26 @@ namespace Trello4TargetProcess
     {
         private readonly string _token;
         private readonly RestClient client;
+        private readonly string _apiurl;
 
         public TargetProcess(string url, string token)
         {
-            var _url = "https://" + url + "/api/v1/";
+            _apiurl = "https://" + url + "/api/v1/";
             _token = token;
 
-            client = new RestClient(_url);
+            client = new RestClient(_apiurl);
             client.Authenticator = new TokenAuthenticator(_token);
+        }
+
+        public void AddUpdateUserStory(UserStory story)
+        {
+            var endpoint = _apiurl + "UserStories/";
+
+            var storystr = JsonConvert.SerializeObject(story, Formatting.None, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
+
+            endpoint
+                .AddQueryParam("token", _token)
+                .PostStringToUrl(storystr, "application/json");
         }
 
         public IEnumerable<UserStory> GetUserStories()
@@ -283,6 +324,20 @@ namespace Trello4TargetProcess
 
             var resp = client.Execute(req);
             var data = JsonConvert.DeserializeObject<UserStoryResponse>(resp.Content);
+            return data.Items;
+        }
+
+        public IEnumerable<Task> GetTasksInProgress()
+        {
+            var req = new RestRequest("Tasks/");
+            req.RequestFormat = DataFormat.Json;
+            req.AddHeader("Accept", "application/json");
+            req.AddParameter("take", "1000"); // TODO: This will break miserable when we hit an inst with over 1000 entities
+
+            req.AddParameter("where", "EntityState.Name eq 'In Progress'");
+
+            var resp = client.Execute(req);
+            var data = JsonConvert.DeserializeObject<TaskResponse>(resp.Content);
             return data.Items;
         }
 
@@ -323,38 +378,73 @@ namespace Trello4TargetProcess
             public List<UserStory> Items;
         }
 
-        public class UserStory
+        public class TaskResponse
         {
-            public Int32 Id;
-            public string Name;
-            public string Description;
-            public string Tags;
+            public string Next;
+            public List<Task> Items;
+        }
 
+        public abstract class IEntity
+        {
+            public int? Id { get; set; }
+            public string Name { get; set; }
+            public string Description { get; set; }
+            public string Tags { get; set; }
+
+            [JsonIgnore]
+            [XmlIgnore]
             public string TrelloId
             {
                 get
                 {
-                    if (CustomFields == null)
-                        return null;
+                    return (string) CustomFields?.Where(field => field.Name == "TrelloId")
+                                                 .Select(field => field.Value)
+                                                 .FirstOrDefault();
+                }
+                set
+                {
+                    if(CustomFields == null)
+                        CustomFields = new List<CustomField>();
 
-                    return (string) ((from field in CustomFields
-                        where field.Name == "TrelloId"
-                        select field.value).FirstOrDefault());
+                    if (this.TrelloId == null)
+                    {
+                        var field = new CustomField
+                        {
+                            Name = "TrelloId",
+                            Type = "Text",
+                            Value = value
+                        };
+                        CustomFields.Add(field);
+                    }
+                    else
+                    {
+                        var fields = CustomFields.Where(f => f.Name == "TrelloId");
+                        var field = fields.FirstOrDefault();
+                        if (field != null)
+                            field.Name = value;
+                    }
                 }
             }
 
-            public EntityState entitystate;
-
-            public double NumericPriority;
-
+            public EntityState EntityState;
             public List<CustomField> CustomFields;
+        }
+
+        public class UserStory : IEntity
+        {
+            public EntityType EntityType { get; set; }
+            public Project Project { get; set; }
+        }
+
+        public class Task : IEntity
+        {
         }
 
         public class CustomField
         {
             public string Name;
             public string Type;
-            public object value;
+            public object Value;
         }
 
         public class EntityState
@@ -366,10 +456,29 @@ namespace Trello4TargetProcess
             public double NumericPriority;
         }
 
+        public class Owner
+        {
+            public int Id { get; set; }
+            public string FirstName { get; set; }
+            public string LastName { get; set; }
+        }
+
+        public class Priority
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+        }
+
         public class Project
         {
-            public Int32 Id;
-            public string Name;
+            public int Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        public class EntityType
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
         }
     }
 }
