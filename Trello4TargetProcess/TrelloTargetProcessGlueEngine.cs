@@ -129,7 +129,7 @@ namespace Trello4TargetProcess
             foreach (var userStory in tpDonedEntities)
             {
                 var card = _trello.Cards.WithId(userStory.TrelloId);
-                if (card.Closed != true)
+                if (card != null && card.Closed != true)
                     _trello.Cards.Archive(new CardId(userStory.TrelloId));
             }
         }
@@ -139,10 +139,14 @@ namespace Trello4TargetProcess
             // Find cards that have been archived in Trello, 'Done' them in TP
             foreach (var story in tpStoriesFromTrello)
             {
-                if (_trello.Cards.WithId(story.TrelloId).Closed)
+                var card = _trello.Cards.WithId(story.TrelloId);
+                if (card != null && card.Closed)
                 {
-                    story.EntityState = new TargetProcess.EntityState { Name = "Done", Id = 82 };
-                    _tp.AddUpdateEntity(story);
+                    if (story.EntityState.Name != "Done")
+                    {
+                        story.EntityState = new TargetProcess.EntityState { Name = "Done", Id = 82 };
+                        _tp.AddUpdateEntity(story);
+                    }
                 }
             }
         }

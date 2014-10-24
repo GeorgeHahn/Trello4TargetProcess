@@ -141,7 +141,9 @@ namespace Trello4TargetProcess
 
             while (true)
             {
+                Console.WriteLine("Running");
                 glue.Run();
+                Console.WriteLine("Sleeping");
                 Thread.Sleep(settings.PollInterval);
             }
         }
