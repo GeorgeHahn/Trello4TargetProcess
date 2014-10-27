@@ -30,7 +30,7 @@ namespace Trello4TargetProcess
             var settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText("settings.json"));
 
             if (settings.PollInterval == 0)
-                settings.PollInterval = 30000;
+                settings.PollInterval = 300000;
 
             if (args.Length > 0)
             {

@@ -13,6 +13,8 @@ namespace Trello4TargetProcess
         private readonly TargetProcess _tp;
         private readonly Program.Settings _settings;
 
+        private System.Action<string> Log = s => Console.WriteLine(s);
+
         public TrelloTargetProcessGlueEngine(Trello trello, string boardid, TargetProcess tp, Program.Settings settings)
         {
             _trello = trello;
@@ -34,13 +36,65 @@ namespace Trello4TargetProcess
             var lists = _trello.Lists.ForBoard(board).ToList();
             var tpStoriesFromTrello = _tp.GetEntitiesFromTrello().ToList();
 
-            SyncTrelloArchiveStateToTPEntities(tpStoriesFromTrello);
-            SyncTPEntityStateToTrelloCards(tpStoriesFromTrello);
-            SyncNewTrelloCardsToTP(tpStoriesFromTrello, board);
-            UpdateWIPListOnTrelloFromInProgressTasksInTP(lists);
+            var trelloCards = new Dictionary<string, Card>();
+            foreach (var id in tpStoriesFromTrello)
+                trelloCards[id.TrelloId] = _trello.Cards.WithId(id.TrelloId);
+
+            SyncData(tpStoriesFromTrello, trelloCards);
+            SyncTrelloArchiveStateToTPEntities(tpStoriesFromTrello, trelloCards);
+            SyncTPEntityStateToTrelloCards(tpStoriesFromTrello, trelloCards);
+            SyncNewTrelloCardsToTP(tpStoriesFromTrello, board, trelloCards);
+            UpdateWIPListOnTrelloFromInProgressTasksInTP(lists, trelloCards);
         }
 
-        private void UpdateWIPListOnTrelloFromInProgressTasksInTP(List<List> lists)
+        private void SyncData(List<TargetProcess.IEntity> lists, Dictionary<string, Card> cards)
+        {
+            foreach (var entity in lists)
+            {
+                if (!string.IsNullOrWhiteSpace(entity.Description) &&
+                    !string.IsNullOrWhiteSpace(cards[entity.TrelloId].Desc))
+                {
+                    if (entity.Description != cards[entity.TrelloId].Desc)
+                    {
+                        if (entity.ModifyDate > cards[entity.TrelloId].DateLastActivity)
+                        {
+                            cards[entity.TrelloId].Desc = entity.Description;
+                            _trello.Cards.Update(cards[entity.TrelloId]);
+                            Log("Updated Trello desc for: " + entity.Name);
+                        }
+                        else
+                        {
+                            entity.Description = cards[entity.TrelloId].Desc;
+                            _tp.AddUpdateEntity(entity);
+                            Log("Updated TP desc for: " + entity.Name);
+                        }
+                    }
+                }
+
+
+                if (!string.IsNullOrWhiteSpace(entity.Name) &&
+                    !string.IsNullOrWhiteSpace(cards[entity.TrelloId].Name))
+                {
+                    if (entity.Name != cards[entity.TrelloId].Name)
+                    {
+                        if (entity.ModifyDate > cards[entity.TrelloId].DateLastActivity.ToLocalTime())
+                        {
+                            cards[entity.TrelloId].Name = entity.Name;
+                            _trello.Cards.Update(cards[entity.TrelloId]);
+                            Log("Updated Trello name for: " + entity.Name);
+                        }
+                        else
+                        {
+                            entity.Name = cards[entity.TrelloId].Name;
+                            _tp.AddUpdateEntity(entity);
+                            Log("Updated TP name for: " + entity.Name);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void UpdateWIPListOnTrelloFromInProgressTasksInTP(List<List> lists, Dictionary<string, Card> trelloCards)
         {
             // Take WIP cards from TP and send them to trello
             var wip = new List<TargetProcess.IEntity>();
@@ -56,21 +110,26 @@ namespace Trello4TargetProcess
 
                     story.TrelloId = newCard.Id;
                     _tp.AddUpdateEntity(story);
+
+                    Log("Added to Trello: " + story.Name);
                 }
                 else
                 {
                     // Sync doneness from Trello to TP
-                    if (_trello.Cards.WithId(story.TrelloId).Closed == true)
+                    if (trelloCards[story.TrelloId].Closed == true)
                     {
                         story.EntityState = new TargetProcess.EntityState {Name = "Done", Id = 82};
                             // TODO: THIS IS WRONG, ID DEPENDS ON THE PROJECT
+
                         _tp.AddUpdateEntity(story);
+
+                        Log("Closed in TP: " + story.Name);
                     }
                 }
             }
         }
 
-        private void SyncNewTrelloCardsToTP(List<TargetProcess.IEntity> tpStoriesFromTrello, Board board)
+        private void SyncNewTrelloCardsToTP(List<TargetProcess.IEntity> tpStoriesFromTrello, Board board, Dictionary<string, Card> trelloCards)
         {
             // Find cards in Trello that aren't in TP
             var tpIds = tpStoriesFromTrello.Select(tpEntity => tpEntity.TrelloId).ToList();
@@ -89,7 +148,7 @@ namespace Trello4TargetProcess
             // IDs of cards that are in Trello, but not in TP
             foreach (var id in trelloIds)
             {
-                var card = _trello.Cards.WithId(id);
+                var card = trelloCards[id];
                 var newStory = new TargetProcess.IEntity();
                 newStory.Id = null; // new card
                 newStory.Name = card.Name;
@@ -100,6 +159,8 @@ namespace Trello4TargetProcess
                 newStory.Project = _settings.TargetProcessProject;
 
                 _tp.AddUpdateUserStory(newStory);
+
+                Log("Added to TP: " + newStory.Name);
             }
 
             ScrubTrelloIDsFromTP(tpStoriesFromTrello, tpIds);
@@ -116,10 +177,12 @@ namespace Trello4TargetProcess
                 var tpentity = tpStoriesFromTrello.FirstOrDefault(entity => entity.TrelloId == badID);
                 tpentity.TrelloId = null;
                 _tp.AddUpdateEntity(tpentity);
+
+                Log("Scrubbed old Trello ID from: " + tpentity.Name);
             }
         }
 
-        private void SyncTPEntityStateToTrelloCards(List<TargetProcess.IEntity> tpStoriesFromTrello)
+        private void SyncTPEntityStateToTrelloCards(List<TargetProcess.IEntity> tpStoriesFromTrello, Dictionary<string, Card> trelloCards)
         {
             // Find cards that have been done'd in TP, archive them in Trello
             var tpDonedEntities = from x in tpStoriesFromTrello
@@ -128,24 +191,29 @@ namespace Trello4TargetProcess
 
             foreach (var userStory in tpDonedEntities)
             {
-                var card = _trello.Cards.WithId(userStory.TrelloId);
+                var card = trelloCards[userStory.TrelloId];
                 if (card != null && card.Closed != true)
+                {
                     _trello.Cards.Archive(new CardId(userStory.TrelloId));
+                    Log("Archived card in Trello: " + userStory.Name);
+                }
             }
         }
 
-        private void SyncTrelloArchiveStateToTPEntities(List<TargetProcess.IEntity> tpStoriesFromTrello)
+        private void SyncTrelloArchiveStateToTPEntities(List<TargetProcess.IEntity> tpStoriesFromTrello, Dictionary<string, Card> trelloCards)
         {
             // Find cards that have been archived in Trello, 'Done' them in TP
             foreach (var story in tpStoriesFromTrello)
             {
-                var card = _trello.Cards.WithId(story.TrelloId);
+                var card = trelloCards[story.TrelloId];
                 if (card != null && card.Closed)
                 {
                     if (story.EntityState.Name != "Done")
                     {
                         story.EntityState = new TargetProcess.EntityState { Name = "Done", Id = 82 };
                         _tp.AddUpdateEntity(story);
+
+                        Log("Doned card in TP: " + story.Name);
                     }
                 }
             }

@@ -197,6 +197,7 @@ namespace Trello4TargetProcess
                 }
             }
 
+            public DateTime ModifyDate;
             public EntityState EntityState;
             public List<CustomField> CustomFields;
             public EntityType EntityType { get; set; }
