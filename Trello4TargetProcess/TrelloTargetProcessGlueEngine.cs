@@ -12,6 +12,9 @@ namespace Trello4TargetProcess
         private readonly string _boardid;
         private readonly TargetProcess _tp;
         private readonly Program.Settings _settings;
+        private readonly Board board;
+        private readonly List<List> lists;
+        private readonly Dictionary<string, Card> trelloCards;
 
         private System.Action<string> Log = s => Console.WriteLine(s);
 
@@ -21,6 +24,9 @@ namespace Trello4TargetProcess
             _boardid = boardid;
             _tp = tp;
             _settings = settings;
+            board = _trello.Boards.WithId(_boardid);
+            lists = _trello.Lists.ForBoard(board).ToList();
+            trelloCards = new Dictionary<string, Card>();
 
             if (_settings.TargetProcessProject == null)
                 _settings.TargetProcessProject = new TargetProcess.Project()
@@ -32,13 +38,14 @@ namespace Trello4TargetProcess
 
         public void Run()
         {
-            var board = _trello.Boards.WithId(_boardid);
-            var lists = _trello.Lists.ForBoard(board).ToList();
             var tpStoriesFromTrello = _tp.GetEntitiesFromTrello().ToList();
 
-            var trelloCards = new Dictionary<string, Card>();
+            // Update trelloCards dictionary with any new keys
             foreach (var id in tpStoriesFromTrello)
-                trelloCards[id.TrelloId] = _trello.Cards.WithId(id.TrelloId);
+            {
+                if(!trelloCards.ContainsKey(id.TrelloId))
+                    trelloCards[id.TrelloId] = _trello.Cards.WithId(id.TrelloId);
+            }
 
             SyncData(tpStoriesFromTrello, trelloCards);
             SyncTrelloArchiveStateToTPEntities(tpStoriesFromTrello, trelloCards);
