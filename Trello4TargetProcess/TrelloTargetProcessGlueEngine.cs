@@ -43,14 +43,32 @@ namespace Trello4TargetProcess
             // Update trelloCards dictionary with any new keys
             foreach (var id in tpStoriesFromTrello)
             {
-                if(!trelloCards.ContainsKey(id.TrelloId))
-                    trelloCards[id.TrelloId] = _trello.Cards.WithId(id.TrelloId);
+                if (!trelloCards.ContainsKey(id.TrelloId))
+                {
+                    var card = _trello.Cards.WithId(id.TrelloId);
+                    if (card != null)
+                        trelloCards[id.TrelloId] = card;
+                }
+            }
+
+            SyncTrelloArchiveStateToTPEntities(tpStoriesFromTrello, trelloCards);
+            SyncTPEntityStateToTrelloCards(tpStoriesFromTrello, trelloCards);
+            SyncNewTrelloCardsToTP(_tp.GetEntitiesFromTrello().ToList(), board);
+
+            tpStoriesFromTrello = _tp.GetEntitiesFromTrello().ToList();
+
+            // Update trelloCards dictionary with any new keys
+            foreach (var id in tpStoriesFromTrello)
+            {
+                if (!trelloCards.ContainsKey(id.TrelloId))
+                {
+                    var card = _trello.Cards.WithId(id.TrelloId);
+                    if(card != null)
+                        trelloCards[id.TrelloId] = card;
+                }
             }
 
             SyncData(tpStoriesFromTrello, trelloCards);
-            SyncTrelloArchiveStateToTPEntities(tpStoriesFromTrello, trelloCards);
-            SyncTPEntityStateToTrelloCards(tpStoriesFromTrello, trelloCards);
-            SyncNewTrelloCardsToTP(tpStoriesFromTrello, board, trelloCards);
             UpdateWIPListOnTrelloFromInProgressTasksInTP(lists, trelloCards);
         }
 
@@ -58,7 +76,7 @@ namespace Trello4TargetProcess
         {
             foreach (var entity in lists)
             {
-                if (!string.IsNullOrWhiteSpace(entity.Description) &&
+                if (!string.IsNullOrWhiteSpace(entity.Description) ||
                     !string.IsNullOrWhiteSpace(cards[entity.TrelloId].Desc))
                 {
                     if (entity.Description != cards[entity.TrelloId].Desc)
@@ -79,7 +97,7 @@ namespace Trello4TargetProcess
                 }
 
 
-                if (!string.IsNullOrWhiteSpace(entity.Name) &&
+                if (!string.IsNullOrWhiteSpace(entity.Name) ||
                     !string.IsNullOrWhiteSpace(cards[entity.TrelloId].Name))
                 {
                     if (entity.Name != cards[entity.TrelloId].Name)
@@ -136,7 +154,7 @@ namespace Trello4TargetProcess
             }
         }
 
-        private void SyncNewTrelloCardsToTP(List<TargetProcess.IEntity> tpStoriesFromTrello, Board board, Dictionary<string, Card> trelloCards)
+        private void SyncNewTrelloCardsToTP(List<TargetProcess.IEntity> tpStoriesFromTrello, Board board)
         {
             // Find cards in Trello that aren't in TP
             var tpIds = tpStoriesFromTrello.Select(tpEntity => tpEntity.TrelloId).ToList();
@@ -155,7 +173,7 @@ namespace Trello4TargetProcess
             // IDs of cards that are in Trello, but not in TP
             foreach (var id in trelloIds)
             {
-                var card = trelloCards[id];
+                var card = _trello.Cards.WithId(id);
                 var newStory = new TargetProcess.IEntity();
                 newStory.Id = null; // new card
                 newStory.Name = card.Name;
