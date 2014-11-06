@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>$id$</id>
+    <version>$version$</version>
+    <title>$title$</title>
+    <authors>$author$</authors>
+    <owners>$author$</owners>
+    <licenseUrl>http://www.apache.org/licenses/LICENSE-2.0.html</licenseUrl>
+    <projectUrl>https://github.com/dillenmeister/Trello.NET</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>$description$</description>
+    <releaseNotes>
+
+      0.6.2
+      * Issue any request to the trello api using Trello.Advanced.Get/Post/Put/Delete
+      * Support for some new action types: copy card, update card (closed), update card (position) and delete card
+      * The Card and Organization classes have a couple of new properties
+      * Set the unread flag on notifications (Trello.Notifications.ChangeUnread)
+
+      0.6.1
+      * Pos property on CheckItem and Checklist
+      * Fixed bug where a board could not be read when not authorized
+      * Fixed bug where some actions where missing when using Trello.Actions.ForCard
+
+      0.6.0
+      * Changed so that at least version 4.5 of Json.NET is needed instead of 4.5-4.6
+      * Added support for "DateLastEdited" to comments
+      * Date format correction for Trello.Since.Date(dateTime)
+
+    </releaseNotes>
+    <copyright>Copyright 2012</copyright>
+    <tags>trello</tags>
+    <dependencies>
+      <dependency id="Newtonsoft.Json" version="4.5" />
+      <dependency id="RestSharp" version="104.1.0" />
+    </dependencies>
+  </metadata>
+</package>
