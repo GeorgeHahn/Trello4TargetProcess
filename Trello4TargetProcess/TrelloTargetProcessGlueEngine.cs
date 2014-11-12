@@ -36,6 +36,17 @@ namespace Trello4TargetProcess
                 };
         }
 
+        public void NewRun()
+        {
+            // Get Trello board last updated time
+            // If stale, enum cards for board and check against collection
+
+            // Can I get TP update time? Probably not
+            // Poll TP cards - if any new WIP, Blocked, or Done, add them to collection
+
+            // Foreach on collection -> x.Update();
+        }
+
         public void Run()
         {
             var tpStoriesFromTrello = _tp.GetEntitiesFromTrello().ToList();
