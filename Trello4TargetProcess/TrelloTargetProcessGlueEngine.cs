@@ -92,9 +92,10 @@ namespace Trello4TargetProcess
                 {
                     if (entity.Description != cards[entity.TrelloId].Desc)
                     {
-                        if (entity.ModifyDate > cards[entity.TrelloId].DateLastActivity)
+                        if (entity.ModifyDate > cards[entity.TrelloId].DateLastActivity.ToLocalTime())
                         {
-                            cards[entity.TrelloId].Desc = entity.Description;
+                            cards[entity.TrelloId].Desc = entity.Description ?? "";
+
                             _trello.Cards.Update(cards[entity.TrelloId]);
                             Log("Updated Trello desc for: " + entity.Name);
                         }
@@ -107,7 +108,6 @@ namespace Trello4TargetProcess
                     }
                 }
 
-
                 if (!string.IsNullOrWhiteSpace(entity.Name) ||
                     !string.IsNullOrWhiteSpace(cards[entity.TrelloId].Name))
                 {
@@ -116,6 +116,9 @@ namespace Trello4TargetProcess
                         if (entity.ModifyDate > cards[entity.TrelloId].DateLastActivity.ToLocalTime())
                         {
                             cards[entity.TrelloId].Name = entity.Name;
+                            if (cards[entity.TrelloId].Desc == null)
+                                cards[entity.TrelloId].Desc = "";
+
                             _trello.Cards.Update(cards[entity.TrelloId]);
                             Log("Updated Trello name for: " + entity.Name);
                         }
