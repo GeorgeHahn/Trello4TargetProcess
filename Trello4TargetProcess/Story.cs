@@ -31,23 +31,17 @@ namespace Trello4TargetProcess
             Done
         }
 
-        public Story(Trello _trello, TargetProcess _tp) // Kinda nasty
-        {
-            this._trello = _trello;
-            this._tp = _tp;
-        }
-
+        // TODO: Populate this from settings
         private const string IDStaging = "";
         private const string IDAccepted = "";
         private const string IDWIP = "";
         private const string IDBlocked = "";
 
-        private const string TPStaging = "";
-        private const string TPAccepted = "";
-        private const string TPWIP = "";
-        private const string TPBlocked = "";
+        private const int TPStaging = 0;
+        private const int TPAccepted = 0;
+        private const int TPWIP = 0;
+        private const int TPBlocked = 0;
 
-        // TODO: Populate this from settings
         private Dictionary<string, State> trelloStateMap = new Dictionary<string, State>()
         {
             {IDStaging, State.Staging},
@@ -55,7 +49,7 @@ namespace Trello4TargetProcess
             {IDWIP, State.WIP},
             {IDBlocked, State.Blocked}
         };
-        private Dictionary<string, State> tpStateMap = new Dictionary<string, State>()
+        private Dictionary<int, State> tpStateMap = new Dictionary<int, State>()
         {
             {TPStaging, State.Staging},
             {TPAccepted, State.Accepted},
@@ -63,32 +57,28 @@ namespace Trello4TargetProcess
             {TPBlocked, State.Blocked}
         };
 
+        public Story(Trello _trello, TargetProcess _tp, Card trelloCard, TargetProcess.IEntity targetProcessEntity) // Kinda nasty
+        {
+            this._trello = _trello;
+            this._tp = _tp;
+            TargetProcessEntity = targetProcessEntity;
+            TrelloCard = trelloCard;
+        }
+
         public void Update()
         {
-            // NEED A WAY TO GET ARCHIVED TRELLO CARDS
-
+            // TODO: NEED A WAY TO GET ARCHIVED TRELLO CARDS
             // TODO: Sync due dates
+            // TODO: Sync Trello checklists (to what? TP tasks?)
 
-            if (TrelloCard.DateLastActivity > TargetProcessEntity.ModifyDate)
+            if (TrelloCard.DateLastActivity.ToLocalTime() > TargetProcessEntity.ModifyDate.ToLocalTime())
             {
                 // Trello is newer
                 SetName(TrelloCard.Name);
                 SetDescription(TrelloCard.Desc);
-
-                if (TrelloCard.Closed)
-                    SetState(State.Done);
-                else
-                    SetState(trelloStateMap[TrelloCard.IdList]);
-
+                SetState(TrelloCard.Closed ? State.Done : trelloStateMap[TrelloCard.IdList]);
                 //SetDueDate()
-
-                var tags = TrelloCard.Labels.Aggregate((a, b) =>
-                {
-                    var label = new Card.Label();
-                    label.Name = a.Name + "," + b.Name;
-                    return label;
-                });
-
+                var tags = TrelloCard.Labels.Aggregate((a, b) => new Card.Label {Name = a.Name + "," + b.Name});
                 SetTags(tags.Name);
             }
             else
@@ -96,18 +86,9 @@ namespace Trello4TargetProcess
                 // TP is newer
                 SetName(TargetProcessEntity.Name);
                 SetDescription(TargetProcessEntity.Description);
-
-                SetState(tpStateMap[TargetProcessEntity.EntityState.Name]);
-
-                // Sync due date
-
-                var tags = TrelloCard.Labels.Aggregate((a, b) =>
-                {
-                    var label = new Card.Label();
-                    label.Name = a.Name + "," + b.Name;
-                    return label;
-                });
-
+                SetState(tpStateMap[TargetProcessEntity.EntityState.Id]);
+                //SetDueDate()
+                var tags = TrelloCard.Labels.Aggregate((a, b) => new Card.Label { Name = a.Name + "," + b.Name });
                 SetTags(tags.Name);
             }
 
@@ -141,6 +122,10 @@ namespace Trello4TargetProcess
 
         private void SetDescription(string description)
         {
+            // TODO Rich list sync
+            // Trello lists use hyphen and numbers for lists
+            // TP lists use html
+
             if (TrelloCard.Desc != description)
             {
                 TrelloCard.Desc = description;
@@ -173,17 +158,34 @@ namespace Trello4TargetProcess
 
         private void SetState(State state)
         {
-            // TODO
-
-            if (TrelloCard.Closed != done)
+            if (state == State.Done)
             {
-                TrelloCard.Closed = done;
-                TrelloStale = true;
+                if (!TrelloCard.Closed)
+                {
+                    TrelloCard.Closed = true;
+                    TrelloStale = true;
+                }
+            }
+            else
+            {
+                if (TrelloCard.Closed)
+                {
+                    TrelloCard.Closed = false;
+                    TrelloStale = true;
+                }
+
+                var listId = trelloStateMap.FirstOrDefault(x => x.Value == state).Key;
+                if (TrelloCard.IdList != listId)
+                {
+                    TrelloCard.IdList = listId;
+                    TrelloStale = true;
+                }
             }
 
-            if (TargetProcessEntity.EntityState.IsFinal != done)
+            var tpstate = tpStateMap.FirstOrDefault(x => x.Value == state).Key;
+            if(TargetProcessEntity.EntityState.Id != tpstate)
             {
-                TargetProcessEntity.EntityState = new TargetProcess.EntityState { Name = "Done", Id = 82 }; // TODO THIS IS STILL WRONG
+                TargetProcessEntity.EntityState = new TargetProcess.EntityState { Id = tpstate };
                 TPStale = true;
             }
         }
