@@ -90,11 +90,12 @@ namespace Trello4TargetProcess
                 if (!string.IsNullOrWhiteSpace(entity.Description) ||
                     !string.IsNullOrWhiteSpace(cards[entity.TrelloId].Desc))
                 {
-                    if (entity.Description != cards[entity.TrelloId].Desc)
+                    var dehtmldesc = Story.DeHTML(entity.Description);
+                    if (dehtmldesc != cards[entity.TrelloId].Desc)
                     {
                         if (entity.ModifyDate > cards[entity.TrelloId].DateLastActivity.ToLocalTime())
                         {
-                            cards[entity.TrelloId].Desc = entity.Description ?? "";
+                            cards[entity.TrelloId].Desc = dehtmldesc ?? "";
 
                             _trello.Cards.Update(cards[entity.TrelloId]);
                             Log("Updated Trello desc for: " + entity.Name);

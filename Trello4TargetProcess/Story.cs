@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HtmlAgilityPack;
 using TrelloNet;
 
 namespace Trello4TargetProcess
@@ -120,6 +122,38 @@ namespace Trello4TargetProcess
             }
         }
 
+        public static string DeHTML(string HTML)
+        {
+            HtmlDocument doc = new HtmlDocument();
+            doc.LoadHtml(HTML);
+            var text = "";
+            foreach (var element in doc.DocumentNode.ChildNodes)
+            {
+                text += GetNodeText(element);
+            }
+            return text;
+        }
+
+        private static string GetNodeText(HtmlNode element)
+        {
+            var text = "";
+            if (element.NodeType == HtmlNodeType.Text)
+                text += HtmlEntity.DeEntitize(((HtmlTextNode)element).Text).Trim();
+            else if (element.NodeType == HtmlNodeType.Element)
+            {
+                if (element.Name == "ul")
+                    text += "- ";
+
+                if(element.HasChildNodes)
+                    foreach (var child in element.ChildNodes)
+                        text += GetNodeText(child);
+
+                if (element.Name == "div" || element.Name == "p")
+                    text += Environment.NewLine;
+            }
+            return text;
+        }
+
         private void SetDescription(string description)
         {
             // TODO Rich list sync
@@ -128,7 +162,7 @@ namespace Trello4TargetProcess
 
             if (TrelloCard.Desc != description)
             {
-                TrelloCard.Desc = description;
+                TrelloCard.Desc = DeHTML(description);
                 TrelloStale = true;
             }
 
